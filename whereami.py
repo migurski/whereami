@@ -52,22 +52,27 @@ http://pafciu17.dev.openstreetmap.org/?...
 import re
 import sys
 import ModestMaps
-import subprocess
 import commands
 from urllib import urlencode
+from subprocess import Popen, PIPE
+from sys import stdout as out, stderr as err
 
 url = 'http://pafciu17.dev.openstreetmap.org/'
 gym = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +a=6378137 +b=6378137 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs'
+
+def proj_command():
+    """
+    """
+    status, path = commands.getstatusoutput('which proj')
+    assert status == 0, 'Expected to get a clean exit from `which proj`'
+    return path
 
 def project(lat, lon):
     """ Project latitude, longitude to mercator x, y.
     
         Shells out to proj so it will work if you lack pyproj.
     """
-    status, proj = commands.getstatusoutput('which proj')
-    assert status == 0, 'Expected to get a clean exit from `which proj`'
-
-    pipe = subprocess.Popen([proj] + gym.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    pipe = Popen([proj_command()] + gym.split(), stdin=PIPE, stdout=PIPE)
     pipe.stdin.write('%(lon).8f %(lat).8f\n' % locals())
     pipe.stdin.close()
     
@@ -80,10 +85,7 @@ def unproject(x, y):
     
         Shells out to proj so it will work if you lack pyproj.
     """
-    status, proj = commands.getstatusoutput('which proj')
-    assert status == 0, 'Expected to get a clean exit from `which proj`'
-
-    pipe = subprocess.Popen([proj, '-I', '-f', '%.8f'] + gym.split(), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    pipe = Popen([proj_command(), '-I', '-f', '%.8f'] + gym.split(), stdin=PIPE, stdout=PIPE)
     pipe.stdin.write('%(x).8f %(y).8f\n' % locals())
     pipe.stdin.close()
     
@@ -92,20 +94,20 @@ def unproject(x, y):
     return lat, lon
 
 def is_latlon(this, that):
-    """ True is the arguments seem like a latitude, longitude
+    """ True if the arguments seem like a latitude, longitude
     """
     return -85 <= this and this <= 85 and -180 <= that and that <= 180
 
-def point_map_url(lat, lon, zoom):
+def get_point_map_url(lat, lon, zoom):
     """
     """
-    q = {'module': 'map', 'width': 512, 'height': 384, 'zoom': zoom}
-    q['lat'], q['lon'] = lat, lon
+    q = {'module': 'map', 'width': 512, 'height': 384}
+    q['lat'], q['lon'], q['zoom'] = lat, lon, zoom
     q['points'] = '%.6f,%.6f' % (lon, lat)
 
     return url + '?' + urlencode(q)
 
-def box_map_url(minlat, minlon, maxlat, maxlon):
+def get_box_map_url(minlat, minlon, maxlat, maxlon):
     """
     """
     buflat = (maxlat - minlat) / 8
@@ -117,18 +119,18 @@ def box_map_url(minlat, minlon, maxlat, maxlon):
     
     return url + '?' + urlencode(q)
 
-def latlon_point(lat, lon, zoom):
+def do_latlon_point(lat, lon, zoom):
     """
     """
     provider = ModestMaps.OpenStreetMap.Provider()
     location = ModestMaps.Geo.Location(lat, lon)
     coord = provider.locationCoordinate(location).zoomTo(zoom)
 
-    print >> sys.stderr, 'mercator: %.2f %.2f' % project(lat, lon)
-    print >> sys.stderr, 'tile:     %(zoom)d/%(column)d/%(row)d' % coord.__dict__
-    print >> sys.stdout, point_map_url(lat, lon, zoom)
+    print >> err, 'mercator: %.2f %.2f' % project(lat, lon)
+    print >> err, 'tile:     %(zoom)d/%(column)d/%(row)d' % coord.__dict__
+    print >> out, get_point_map_url(lat, lon, zoom)
 
-def merc_point(x, y, zoom):
+def do_merc_point(x, y, zoom):
     """
     """
     lat, lon = unproject(x, y)
@@ -137,30 +139,30 @@ def merc_point(x, y, zoom):
     location = ModestMaps.Geo.Location(lat, lon)
     coord = provider.locationCoordinate(location).zoomTo(zoom)
 
-    print >> sys.stderr, 'lat, lon: %.8f %.8f' % (lat, lon)
-    print >> sys.stderr, 'tile: %(zoom)d/%(column)d/%(row)d' % coord.__dict__
-    print >> sys.stdout, point_map_url(lat, lon, zoom)
+    print >> err, 'lat, lon: %.8f %.8f' % (lat, lon)
+    print >> err, 'tile: %(zoom)d/%(column)d/%(row)d' % coord.__dict__
+    print >> out, get_point_map_url(lat, lon, zoom)
 
-def latlon_box(minlat, minlon, maxlat, maxlon):
+def do_latlon_box(minlat, minlon, maxlat, maxlon):
     """
     """
-    print >> sys.stderr, 'southwest:   %.8f %.8f' % (minlat, minlon)
-    print >> sys.stderr, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
-    print >> sys.stderr, 'upper-left:  %.2f %.2f' % project(maxlat, minlon)
-    print >> sys.stderr, 'lower-right: %.2f %.2f' % project(minlat, maxlon)
-    print >> sys.stdout, box_map_url(minlat, minlon, maxlat, maxlon)
+    print >> err, 'southwest:   %.8f %.8f' % (minlat, minlon)
+    print >> err, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
+    print >> err, 'upper-left:  %.2f %.2f' % project(maxlat, minlon)
+    print >> err, 'lower-right: %.2f %.2f' % project(minlat, maxlon)
+    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon)
 
-def merc_box(xmin, ymin, xmax, ymax):
+def do_merc_box(xmin, ymin, xmax, ymax):
     """
     """
     minlat, minlon = unproject(xmin, ymin)
     maxlat, maxlon = unproject(xmax, ymax)
     
-    print >> sys.stderr, 'southwest:   %.8f %.8f' % (minlat, minlon)
-    print >> sys.stderr, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
-    print >> sys.stderr, 'upper-left:  %.2f %.2f' % (xmin, ymax)
-    print >> sys.stderr, 'lower-right: %.2f %.2f' % (xmax, ymin)
-    print >> sys.stdout, box_map_url(minlat, minlon, maxlat, maxlon)
+    print >> err, 'southwest:   %.8f %.8f' % (minlat, minlon)
+    print >> err, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
+    print >> err, 'upper-left:  %.2f %.2f' % (xmin, ymax)
+    print >> err, 'lower-right: %.2f %.2f' % (xmax, ymin)
+    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon)
 
 def tile_box(row, column, zoom):
     """
@@ -170,7 +172,7 @@ def tile_box(row, column, zoom):
     southwest = provider.coordinateLocation(coord.down())
     northeast = provider.coordinateLocation(coord.right())
     
-    latlon_box(southwest.lat, southwest.lon, northeast.lat, northeast.lon)
+    do_latlon_box(southwest.lat, southwest.lon, northeast.lat, northeast.lon)
 
 if __name__ == '__main__':
 
@@ -184,30 +186,30 @@ if __name__ == '__main__':
         try:
             args = map(float, args)
         except ValueError:
-            print >> sys.stderr, 'Two or three values are expected to be numeric: a point and optional zoom.', args
+            print >> err, 'Two or three values are expected to be numeric: a point and optional zoom.', args
             sys.exit(1)
 
         zoom = len(args) == 3 and args[2] or 8
 
         if is_latlon(*args[0:2]):
             lat, lon = args[0:2]
-            latlon_point(lat, lon, zoom)
+            do_latlon_point(lat, lon, zoom)
 
         else:
             x, y = args[0:2]
-            merc_point(x, y, zoom)
+            do_merc_point(x, y, zoom)
 
     elif len(args) is 4:
         try:
             args = map(float, args)
         except ValueError:
-            print >> sys.stderr, 'Four values are expected to be numeric: two points.', args
+            print >> err, 'Four values are expected to be numeric: two points.', args
             sys.exit(1)
 
         if is_latlon(*args[0:2]) and is_latlon(*args[2:4]):
             minlat, maxlat = min(args[0], args[2]), max(args[0], args[2])
             minlon, maxlon = min(args[1], args[3]), max(args[1], args[3])
-            latlon_box(minlat, minlon, maxlat, maxlon)
+            do_latlon_box(minlat, minlon, maxlat, maxlon)
 
         elif is_latlon(*args[0:2]) or is_latlon(*args[2:4]):
             raise Exception("Looks like you're mixing mercator and lat, lon?")
@@ -215,7 +217,7 @@ if __name__ == '__main__':
         else:
             xmin, xmax = min(args[0], args[2]), max(args[0], args[2])
             ymin, ymax = min(args[1], args[3]), max(args[1], args[3])
-            merc_box(xmin, ymin, xmax, ymax)
+            do_merc_box(xmin, ymin, xmax, ymax)
 
     else:
-        print >> sys.stderr, "Sorry I'm not sure what to do with this input.", args
+        print >> err, "Sorry I'm not sure what to do with this input.", args
