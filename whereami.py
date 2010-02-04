@@ -98,16 +98,27 @@ def is_latlon(this, that):
     """
     return -85 <= this and this <= 85 and -180 <= that and that <= 180
 
-def get_point_map_url(lat, lon, zoom):
+def get_tile_polygon(tile):
+    """
+    """
+    provider = ModestMaps.OpenStreetMap.Provider()
+    sw = provider.coordinateLocation(tile.down())
+    ne = provider.coordinateLocation(tile.right())
+    return '%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,transparency:102,thickness:3,color:0:0:0' % (sw.lon, sw.lat, sw.lon, ne.lat, ne.lon, ne.lat, ne.lon, sw.lat)
+
+def get_point_map_url(lat, lon, zoom, tile=None):
     """
     """
     q = {'module': 'map', 'width': 512, 'height': 384}
     q['lat'], q['lon'], q['zoom'] = lat, lon, zoom
     q['points'] = '%.6f,%.6f' % (lon, lat)
 
+    if tile:
+        q['polygons'] = get_tile_polygon(tile)
+
     return url + '?' + urlencode(q)
 
-def get_box_map_url(minlat, minlon, maxlat, maxlon):
+def get_box_map_url(minlat, minlon, maxlat, maxlon, tile=None):
     """
     """
     buflat = (maxlat - minlat) / 8
@@ -116,6 +127,9 @@ def get_box_map_url(minlat, minlon, maxlat, maxlon):
     q = {'module': 'map', 'width': 512, 'height': 384}
     q['bbox'] = '%.6f,%.6f,%.6f,%.6f' % (minlon - buflon, maxlat + buflat, maxlon + buflon, minlat - buflat)
     q['polygons'] = '%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,color:0:0:0' % (minlon, minlat, minlon, maxlat, maxlon, maxlat, maxlon, minlat)
+
+    if tile:
+        q['polygons'] += ';' + get_tile_polygon(tile)
     
     return url + '?' + urlencode(q)
 
@@ -124,11 +138,12 @@ def do_latlon_point(lat, lon, zoom):
     """
     provider = ModestMaps.OpenStreetMap.Provider()
     location = ModestMaps.Geo.Location(lat, lon)
-    coord = provider.locationCoordinate(location).zoomTo(zoom)
+    coord = provider.locationCoordinate(location).zoomTo(zoom).container()
 
     print >> err, 'mercator: %.2f %.2f' % project(lat, lon)
-    print >> err, 'tile:     %(zoom)d/%(column)d/%(row)d' % coord.__dict__
-    print >> out, get_point_map_url(lat, lon, zoom)
+    print >> err, 'in tile:  %(zoom)d/%(column)d/%(row)d' % coord.__dict__
+    print >> err, ''
+    print >> out, get_point_map_url(lat, lon, zoom, coord)
 
 def do_merc_point(x, y, zoom):
     """
@@ -137,32 +152,36 @@ def do_merc_point(x, y, zoom):
 
     provider = ModestMaps.OpenStreetMap.Provider()
     location = ModestMaps.Geo.Location(lat, lon)
-    coord = provider.locationCoordinate(location).zoomTo(zoom)
+    coord = provider.locationCoordinate(location).zoomTo(zoom).container()
 
     print >> err, 'lat, lon: %.8f %.8f' % (lat, lon)
-    print >> err, 'tile: %(zoom)d/%(column)d/%(row)d' % coord.__dict__
-    print >> out, get_point_map_url(lat, lon, zoom)
+    print >> err, 'in tile:  %(zoom)d/%(column)d/%(row)d' % coord.__dict__
+    print >> err, ''
+    print >> out, get_point_map_url(lat, lon, zoom, coord)
 
-def do_latlon_box(minlat, minlon, maxlat, maxlon):
+def do_latlon_box(minlat, minlon, maxlat, maxlon, include_tile=True):
     """
     """
+    if include_tile:
+        provider = ModestMaps.OpenStreetMap.Provider()
+        extent = ModestMaps.Geo.Location(minlat, minlon), ModestMaps.Geo.Location(maxlat, maxlon)
+        map = ModestMaps.mapByExtent(provider, extent[0], extent[1], ModestMaps.Core.Point(512, 384))
+
     print >> err, 'southwest:   %.8f %.8f' % (minlat, minlon)
     print >> err, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
     print >> err, 'upper-left:  %.2f %.2f' % project(maxlat, minlon)
     print >> err, 'lower-right: %.2f %.2f' % project(minlat, maxlon)
-    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon)
+    if include_tile:
+        print >> err, 'near tile:   %(zoom)d/%(column)d/%(row)d' % map.coordinate.__dict__
+    print >> err, ''
+    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon, include_tile and map.coordinate)
 
 def do_merc_box(xmin, ymin, xmax, ymax):
     """
     """
     minlat, minlon = unproject(xmin, ymin)
     maxlat, maxlon = unproject(xmax, ymax)
-    
-    print >> err, 'southwest:   %.8f %.8f' % (minlat, minlon)
-    print >> err, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
-    print >> err, 'upper-left:  %.2f %.2f' % (xmin, ymax)
-    print >> err, 'lower-right: %.2f %.2f' % (xmax, ymin)
-    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon)
+    do_latlon_box(minlat, minlon, maxlat, maxlon)
 
 def tile_box(row, column, zoom):
     """
@@ -172,7 +191,7 @@ def tile_box(row, column, zoom):
     southwest = provider.coordinateLocation(coord.down())
     northeast = provider.coordinateLocation(coord.right())
     
-    do_latlon_box(southwest.lat, southwest.lon, northeast.lat, northeast.lon)
+    do_latlon_box(southwest.lat, southwest.lon, northeast.lat, northeast.lon, False)
 
 if __name__ == '__main__':
 
