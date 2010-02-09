@@ -203,7 +203,7 @@ if __name__ == '__main__':
     
     elif len(args) in (2, 3):
         try:
-            args = map(float, args)
+            args = [float(a.rstrip(',')) for a in args]
         except ValueError:
             print >> err, 'Two or three values are expected to be numeric: a point and optional zoom.', args
             sys.exit(1)
@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
     elif len(args) is 4:
         try:
-            args = map(float, args)
+            args = [float(a.rstrip(',')) for a in args]
         except ValueError:
             print >> err, 'Four values are expected to be numeric: two points.', args
             sys.exit(1)
