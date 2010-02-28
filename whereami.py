@@ -55,11 +55,10 @@ sys.path.append('ModestMaps')
 import ModestMaps
 import commands
 from urllib import urlencode
-from subprocess import Popen, PIPE
 from sys import stdout as out, stderr as err
+from math import log, tan, pi, atan, pow, e
 
 url = 'http://pafciu17.dev.openstreetmap.org/'
-gym = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +a=6378137 +b=6378137 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs'
 
 def proj_command():
     """
@@ -70,27 +69,19 @@ def proj_command():
 
 def project(lat, lon):
     """ Project latitude, longitude to mercator x, y.
-    
-        Shells out to proj so it will work if you lack pyproj.
     """
-    pipe = Popen([proj_command()] + gym.split(), stdin=PIPE, stdout=PIPE)
-    pipe.stdin.write('%(lon).8f %(lat).8f\n' % locals())
-    pipe.stdin.close()
-    
-    x, y = map(float, pipe.stdout.read().strip().split())
+    lat, lon = lat * pi/180, lon * pi/180       # degrees to radians
+    x, y = lon, log(tan(0.25 * pi + 0.5 * lat)) # basic spherical mercator
+    x, y = 6378137 * x, 6378137 * y             # dimensions of the earth
     
     return x, y
 
 def unproject(x, y):
     """ Unproject mercator x, y to latitude, longitude.
-    
-        Shells out to proj so it will work if you lack pyproj.
     """
-    pipe = Popen([proj_command(), '-I', '-f', '%.8f'] + gym.split(), stdin=PIPE, stdout=PIPE)
-    pipe.stdin.write('%(x).8f %(y).8f\n' % locals())
-    pipe.stdin.close()
-    
-    lon, lat = map(float, pipe.stdout.read().strip().split())
+    x, y = x / 6378137, y / 6378137             # dimensions of the earth
+    lat, lon = 2 * atan(pow(e, y)) - .5 * pi, x # basic spherical mercator
+    lat, lon = lat * 180/pi, lon * 180/pi       # radians to degrees
     
     return lat, lon
 
