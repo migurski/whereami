@@ -1,0 +1,3 @@
+[submodule "ModestMaps"]
+	path = ModestMaps
+	url = git://github.com/migurski/modestmaps-py.git
