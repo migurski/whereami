@@ -51,6 +51,7 @@ http://pafciu17.dev.openstreetmap.org/?...
 
 import re
 import sys
+sys.path.append('ModestMaps')
 import ModestMaps
 import commands
 from urllib import urlencode
