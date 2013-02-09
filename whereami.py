@@ -58,7 +58,7 @@ from urllib import urlencode
 from sys import stdout as out, stderr as err
 from math import log, tan, pi, atan, pow, e
 
-url = 'http://pafciu17.dev.openstreetmap.org/'
+url = 'http://www.openstreetmap.org/'
 
 def proj_command():
     """
@@ -98,31 +98,19 @@ def get_tile_polygon(tile):
     ne = provider.coordinateLocation(tile.right())
     return '%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,transparency:102,thickness:3,color:0:0:0' % (sw.lon, sw.lat, sw.lon, ne.lat, ne.lon, ne.lat, ne.lon, sw.lat)
 
-def get_point_map_url(lat, lon, zoom, tile=None):
+def get_point_map_url(lat, lon, zoom):
     """
     """
-    q = {'module': 'map', 'width': 512, 'height': 384}
-    q['lat'], q['lon'], q['zoom'] = lat, lon, zoom
-    q['points'] = '%.6f,%.6f' % (lon, lat)
-
-    if tile:
-        q['polygons'] = get_tile_polygon(tile)
+    q = {'mlat': lat, 'mlon': lon, 'zoom': int(zoom)}
 
     return url + '?' + urlencode(q)
 
-def get_box_map_url(minlat, minlon, maxlat, maxlon, tile=None):
+def get_box_map_url(minlat, minlon, maxlat, maxlon):
     """
     """
-    buflat = (maxlat - minlat) / 8
-    buflon = (maxlon - minlon) / 8
+    q = {'box': 'yes'}
+    q['bbox'] = '%.6f,%.6f,%.6f,%.6f' % (minlon, maxlat, maxlon, minlat)
 
-    q = {'module': 'map', 'width': 512, 'height': 384}
-    q['bbox'] = '%.6f,%.6f,%.6f,%.6f' % (minlon - buflon, maxlat + buflat, maxlon + buflon, minlat - buflat)
-    q['polygons'] = '%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,color:0:0:0' % (minlon, minlat, minlon, maxlat, maxlon, maxlat, maxlon, minlat)
-
-    if tile:
-        q['polygons'] += ';' + get_tile_polygon(tile)
-    
     return url + '?' + urlencode(q)
 
 def do_latlon_point(lat, lon, zoom):
@@ -151,29 +139,22 @@ def do_merc_point(x, y, zoom):
     print >> err, ''
     print >> out, get_point_map_url(lat, lon, zoom, coord)
 
-def do_latlon_box(minlat, minlon, maxlat, maxlon, include_tile=True):
+def do_latlon_box(minlat, minlon, maxlat, maxlon):
     """
     """
-    if include_tile:
-        provider = ModestMaps.OpenStreetMap.Provider()
-        extent = ModestMaps.Geo.Location(minlat, minlon), ModestMaps.Geo.Location(maxlat, maxlon)
-        map = ModestMaps.mapByExtent(provider, extent[0], extent[1], ModestMaps.Core.Point(512, 384))
-
     print >> err, 'southwest:   %.8f %.8f' % (minlat, minlon)
     print >> err, 'northeast:   %.8f %.8f' % (maxlat, maxlon)
     print >> err, 'upper-left:  %.2f %.2f' % project(maxlat, minlon)
     print >> err, 'lower-right: %.2f %.2f' % project(minlat, maxlon)
-    if include_tile:
-        print >> err, 'near tile:   %(zoom)d/%(column)d/%(row)d' % map.coordinate.__dict__
     print >> err, ''
-    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon, include_tile and map.coordinate)
+    print >> out, get_box_map_url(minlat, minlon, maxlat, maxlon)
 
-def do_merc_box(xmin, ymin, xmax, ymax):
+def do_merc_box(xmin, ymin, xmax, ymax, include_tile=True):
     """
     """
     minlat, minlon = unproject(xmin, ymin)
     maxlat, maxlon = unproject(xmax, ymax)
-    do_latlon_box(minlat, minlon, maxlat, maxlon)
+    do_latlon_box(minlat, minlon, maxlat, maxlon, include_tile)
 
 def tile_box(row, column, zoom):
     """
@@ -188,7 +169,12 @@ def tile_box(row, column, zoom):
 if __name__ == '__main__':
 
     args = sys.argv[1:]
-
+    
+    args, _args = [], args
+    
+    for arg in _args:
+        args.extend([a for a in arg.split(',') if a])
+    
     if len(args) is 1 and re.match(r'^\d+/\d+/\d+$', args[0]):
         zoom, column, row = map(int, args[0].split('/'))
         tile_box(row, column, zoom)
