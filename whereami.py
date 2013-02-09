@@ -123,7 +123,7 @@ def do_latlon_point(lat, lon, zoom):
     print >> err, 'mercator: %.2f %.2f' % project(lat, lon)
     print >> err, 'in tile:  %(zoom)d/%(column)d/%(row)d' % coord.__dict__
     print >> err, ''
-    print >> out, get_point_map_url(lat, lon, zoom, coord)
+    print >> out, get_point_map_url(lat, lon, zoom)
 
 def do_merc_point(x, y, zoom):
     """
